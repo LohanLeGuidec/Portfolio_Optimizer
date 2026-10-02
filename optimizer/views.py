@@ -22,6 +22,9 @@ from . import charts
 from .forms import AnalysisForm
 
 CACHE_PREFIX = "analysis:"
+# À incrémenter quand le contenu des résultats change : les analyses déjà en cache
+# (calculées avec l'ancien code) sont alors ignorées au lieu d'être réaffichées.
+ANALYSIS_VERSION = 3
 
 
 # ── Formatage ────────────────────────────────────────────────────────────────
@@ -55,7 +58,7 @@ def frame_table(df: pd.DataFrame, fmt, index_label="", index_fmt=str):
 # ── Cache des analyses ───────────────────────────────────────────────────────
 
 def _run_key(params: dict) -> str:
-    payload = json.dumps(params, sort_keys=True, default=str)
+    payload = json.dumps({"v": ANALYSIS_VERSION, **params}, sort_keys=True, default=str)
     return hashlib.sha256(payload.encode()).hexdigest()[:20]
 
 
@@ -190,7 +193,11 @@ def build_results_context(R: dict, run_key: str) -> dict:
         "drawdowns": charts.lines(drawdown_series_, y_title="Drawdown", fmt=".2%"),
         "mdd_bar": charts.bars(names, [summary.loc[n, "max_drawdown"] for n in names], y_title="Max drawdown",
                                fmt=".2%"),
-        "frontier": charts.efficient_frontier(R["frontier"], points),
+        # Actifs placés avec la même covariance (Ledoit-Wolf) que la frontière, sinon un actif
+        # pourrait apparaître légèrement au-dessus d'elle
+        "frontier": charts.efficient_frontier(
+            R["frontier"], points, assets=am.assign(volatility=np.sqrt(np.diag(R["cov"]) * 252)), rf=R["rf"],
+        ),
         "mc_violin": charts.monte_carlo_violin(mc, params["horizon"]),
     }
     if R["wf_equity_curves"]:

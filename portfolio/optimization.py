@@ -102,9 +102,13 @@ def risk_parity_weights(cov_matrix, budgets=None) -> np.ndarray:
         objective, y0, jac=gradient, method="L-BFGS-B",
         bounds=[(1e-12, None)] * n, options={"maxiter": 10_000, "gtol": 1e-12, "ftol": 1e-15},
     )
-    if not res.success:
-        warnings.warn(f"Risk parity non convergé : {res.message}", stacklevel=2)
-    return res.x / res.x.sum()
+    w = res.x / res.x.sum()
+    # L-BFGS-B signale parfois « ABNORMAL » alors que la solution est exacte (tolérances
+    # très serrées) : on juge sur le résultat, à savoir l'égalité des contributions au risque.
+    rc = w * (cov @ w)
+    if (rc.max() - rc.min()) / rc.mean() > 1e-4:
+        warnings.warn(f"Risk parity imprécis : {res.message}", stacklevel=2)
+    return w
 
 
 # 4) Max Sharpe -------------------------------------------------------------
@@ -191,7 +195,49 @@ def black_litterman_weights(
     return w_bl, mu_bl, sigma_bl
 
 
-# 6) Frontière efficiente (tirages aléatoires) -----------------------------
+# 6) Frontière efficiente ---------------------------------------------------
+
+def efficient_frontier_curve(mean_returns, cov_matrix, n_points: int = 60, periods_per_year: int = 252):
+    """
+    Frontière efficiente long-only exacte : pour chaque rendement cible entre celui du
+    portefeuille de variance minimale et celui de l'actif le plus rentable, on minimise
+    la variance sous contraintes (somme = 1, 0 <= w <= 1, w'μ = cible).
+    Renvoie (rendements annualisés, volatilités annualisées).
+    """
+    mu = _to_numpy(mean_returns)
+    cov = _to_numpy(cov_matrix)
+    n = len(mu)
+
+    w_min = min_variance_portfolio(mu, cov)
+    targets = np.linspace(w_min @ mu, mu.max(), n_points)[1:-1]
+
+    # Extrémités calculées exactement : le portefeuille de variance minimale, et l'actif
+    # le plus rentable seul (seul portefeuille long-only atteignant ce rendement).
+    w_max = np.zeros(n)
+    w_max[np.argmax(mu)] = 1.0
+
+    rets, vols, w0 = [w_min @ mu * periods_per_year], [np.sqrt(w_min @ cov @ w_min * periods_per_year)], w_min
+    for target in targets:
+        res = minimize(
+            lambda w: w @ cov @ w, w0, method="SLSQP",
+            bounds=[(0.0, 1.0)] * n,
+            constraints=(
+                {"type": "eq", "fun": lambda w: np.sum(w) - 1},
+                {"type": "eq", "fun": lambda w, t=target: w @ mu - t},
+            ),
+            options={"maxiter": 1000, "ftol": 1e-12},
+        )
+        if not res.success:
+            continue
+        w0 = res.x  # démarrage à chaud pour le point suivant
+        rets.append(res.x @ mu * periods_per_year)
+        vols.append(np.sqrt(res.x @ cov @ res.x * periods_per_year))
+    rets.append(w_max @ mu * periods_per_year)
+    vols.append(np.sqrt(w_max @ cov @ w_max * periods_per_year))
+    return np.array(rets), np.array(vols)
+
+
+# 7) Portefeuilles aléatoires (nuage sous la frontière) ---------------------
 
 def efficient_frontier_random(
     mean_returns,

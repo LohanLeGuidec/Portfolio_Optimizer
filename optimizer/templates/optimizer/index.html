@@ -54,7 +54,7 @@
     </form>
 
     <footer class="sidebar-footer">
-      Lohan Le Guidec — Master 1 MBFA<br>Ingénierie Économique et Financière — Université de Rennes
+      Lohan Le Guidec - Master 2 MBFA<br>Ingénierie Économique et Financière - Université de Rennes
     </footer>
   </aside>
 
@@ -161,7 +161,7 @@
         <section class="card">
           <h3>Frontière efficiente de Markowitz</h3>
           {% include "optimizer/partials/chart.html" with json=charts.frontier %}
-          <p class="note">{{ params.n_portfolios }} portefeuilles long-only tirés uniformément ; couleur = ratio de Sharpe.</p>
+          <p class="note">Courbe noire : frontière efficiente long-only exacte (variance minimale pour chaque niveau de rendement). Tirets : Capital Market Line, du taux sans risque au portefeuille tangent (Max Sharpe). Nuage : {{ params.n_portfolios }} portefeuilles long-only tirés au hasard, colorés par ratio de Sharpe ; aucun ne peut dépasser la frontière.</p>
         </section>
       </section>
 

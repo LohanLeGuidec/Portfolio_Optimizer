@@ -111,3 +111,38 @@ def test_risk_parity_stable_on_near_identical_assets():
     assert _is_long_only(w)
     rc = risk_contributions(w, cov)
     np.testing.assert_allclose(rc, rc.mean(), rtol=1e-6)
+
+
+def test_efficient_frontier_dominates_random_portfolios(returns, cov):
+    from portfolio.optimization import efficient_frontier_curve
+
+    mu = returns.mean()
+    c_rets, c_vols = efficient_frontier_curve(mu, cov, n_points=25)
+    r_rets, r_vols, _, _ = efficient_frontier_random(mu, cov, n_portfolios=2000)
+    assert len(c_rets) >= 20
+    assert np.all(np.diff(c_rets) > 0)  # rendement croissant le long de la courbe
+    # Aucun portefeuille aléatoire n'est au-dessus de la frontière à volatilité égale
+    # Tolérance de 1 pb : l'interpolation linéaire passe légèrement sous une courbe concave
+    frontier_ret_at = np.interp(r_vols, c_vols, c_rets, left=np.nan, right=np.nan)
+    ok = ~np.isnan(frontier_ret_at)
+    assert np.all(r_rets[ok] <= frontier_ret_at[ok] + 1e-4)
+    # Extrémités exactes : variance minimale au début, actif le plus rentable seul à la fin
+    w_mv = min_variance_portfolio(mu, cov)
+    assert c_vols[0] == pytest.approx(np.sqrt(w_mv @ cov @ w_mv * 252))
+    best = np.argmax(mu.values)
+    assert c_rets[-1] == pytest.approx(mu.values[best] * 252)
+    assert c_vols[-1] == pytest.approx(np.sqrt(cov[best, best] * 252))
+
+
+def test_max_sharpe_is_the_tangency_point(returns, cov):
+    """La Capital Market Line touche la frontière au portefeuille Max Sharpe :
+    aucun point de la frontière n'a un meilleur Sharpe."""
+    from portfolio.optimization import efficient_frontier_curve
+
+    mu, rf = returns.mean(), 0.02
+    w = max_sharpe_portfolio(mu, cov, rf=rf)
+    ms_ret = w @ mu * 252
+    ms_vol = np.sqrt(w @ cov @ w * 252)
+    c_rets, c_vols = efficient_frontier_curve(mu, cov)
+    assert (ms_ret - rf) / ms_vol >= ((c_rets - rf) / c_vols).max() - 1e-6
+    assert ms_vol == pytest.approx(np.interp(ms_ret, c_rets, c_vols), rel=1e-3)

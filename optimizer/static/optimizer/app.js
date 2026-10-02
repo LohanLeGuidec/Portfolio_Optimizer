@@ -12,6 +12,9 @@
       if (!script || !window.Plotly) return;
       const fig = JSON.parse(script.textContent);
       el.dataset.rendered = "1";
+      // Hauteur explicite : sinon, au redimensionnement de la fenêtre, Plotly (responsive)
+      // relit la hauteur du conteneur, la trouve nulle et le graphique déborde de sa carte.
+      el.style.height = `${(fig.layout && fig.layout.height) || 400}px`;
       Plotly.newPlot(el, fig.data, fig.layout, PLOT_CONFIG);
     });
   }

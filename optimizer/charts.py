@@ -137,13 +137,39 @@ def bars(labels, values, height=300, y_title="", color=None, fmt=".1%") -> str:
 
 # ── Frontière efficiente ─────────────────────────────────────────────────────
 
-def efficient_frontier(frontier: dict, points: dict) -> str:
+def efficient_frontier(
+    frontier: dict, points: dict, assets: pd.DataFrame | None = None, rf: float | None = None
+) -> str:
     fig = go.Figure(go.Scattergl(
         x=frontier["vols"], y=frontier["returns"], mode="markers", name="Portefeuilles aléatoires",
         marker=dict(size=4, color=frontier["sharpes"], colorscale=RED_GREEN, opacity=0.55,
                     colorbar=dict(title="Sharpe", thickness=12)),
         hovertemplate="Vol : %{x:.2%}<br>Rdt : %{y:.2%}<extra></extra>",
     ))
+    curve = frontier.get("curve")
+    if curve is not None and len(curve[0]):
+        c_rets, c_vols = curve
+        fig.add_trace(go.Scatter(
+            x=c_vols, y=c_rets, mode="lines", name="Frontière efficiente",
+            line=dict(color="#2B2A27", width=2.5),
+            hovertemplate="Vol : %{x:.2%}<br>Rdt : %{y:.2%}<extra>Frontière</extra>",
+        ))
+        if rf is not None and "Max Sharpe" in points:
+            ret_t, vol_t = points["Max Sharpe"]
+            x_end = max(float(np.max(frontier["vols"])), float(np.max(c_vols))) * 1.05
+            slope = (ret_t - rf) / vol_t
+            fig.add_trace(go.Scatter(
+                x=[0, x_end], y=[rf, rf + slope * x_end], mode="lines", name="Capital Market Line",
+                line=dict(color="#7B4FA8", width=1.5, dash="dash"),
+                hovertemplate="Vol : %{x:.2%}<br>Rdt : %{y:.2%}<extra>CML</extra>",
+            ))
+    if assets is not None:
+        fig.add_trace(go.Scatter(
+            x=assets["volatility"], y=assets["return"], mode="markers+text", name="Actifs",
+            text=list(assets.index), textposition="bottom center", textfont=dict(size=10, color="#6E6A62"),
+            marker=dict(size=8, color="#9A968E", symbol="diamond-open", line=dict(width=1.5)),
+            hovertemplate="%{text}<br>Vol : %{x:.2%}<br>Rdt : %{y:.2%}<extra></extra>",
+        ))
     for name, (ret, vol) in points.items():
         fig.add_trace(go.Scatter(
             x=[vol], y=[ret], mode="markers+text", text=[name], textposition="top right", name=name,
@@ -151,8 +177,17 @@ def efficient_frontier(frontier: dict, points: dict) -> str:
                         line=dict(width=2, color="white")),
             hovertemplate=f"{name}<br>Vol : %{{x:.2%}}<br>Rdt : %{{y:.2%}}<extra></extra>",
         ))
-    fig.update_layout(**_layout(520, xaxis=dict(tickformat=".0%", title="Volatilité annualisée"),
-                                yaxis=dict(tickformat=".0%", title="Rendement annualisé")))
+    vols_all = np.concatenate([frontier["vols"], assets["volatility"].values if assets is not None else []])
+    rets_all = np.concatenate([frontier["returns"], assets["return"].values if assets is not None else []])
+    pad_x, pad_y = 0.05 * np.ptp(vols_all), 0.08 * np.ptp(rets_all)
+    fig.update_layout(**_layout(
+        540,
+        # La CML part de 0 : on cadre sur les portefeuilles pour ne pas écraser le graphique
+        xaxis=dict(tickformat=".0%", title="Volatilité annualisée",
+                   range=[vols_all.min() - pad_x, vols_all.max() + pad_x]),
+        yaxis=dict(tickformat=".0%", title="Rendement annualisé",
+                   range=[rets_all.min() - pad_y, rets_all.max() + pad_y]),
+    ))
     return to_json(fig)
 
 

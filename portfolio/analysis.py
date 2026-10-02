@@ -13,6 +13,7 @@ from sklearn.covariance import LedoitWolf
 from .backtest import walk_forward_backtest
 from .data_loader import convert_prices_to_currency, load_prices
 from .optimization import (
+    efficient_frontier_curve,
     efficient_frontier_random,
     max_sharpe_portfolio,
     min_variance_portfolio,
@@ -266,7 +267,8 @@ def run_analysis(
             "sharpe": sharpe_ratio_per_asset(returns, rf=rf_assets),
             "beta": betas,
         }),
-        frontier=dict(returns=rets_arr, vols=vols_arr, sharpes=sharpes_arr),
+        frontier=dict(returns=rets_arr, vols=vols_arr, sharpes=sharpes_arr,
+                      curve=efficient_frontier_curve(mean_ret, cov)),
         monte_carlo=monte_carlo,
         wf_returns=wf_returns,
         wf_equity_curves=wf_equity_curves,
