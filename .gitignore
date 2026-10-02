@@ -19,3 +19,7 @@ Thumbs.db
 
 # Secrets
 .env
+
+# Vidéos de démonstration (hébergées via le README GitHub, pas dans le dépôt)
+*.mp4
+*.mov
