@@ -1,0 +1,303 @@
+{% extends "optimizer/base.html" %}
+
+{% block body %}
+<div class="layout">
+
+  <!-- ── Barre latérale : paramètres ─────────────────────────────────────── -->
+  <aside class="sidebar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">↗</span>
+      <div>
+        <h1>Portfolio Optimizer</h1>
+        <p>Allocation quantitative multi-stratégies</p>
+      </div>
+    </div>
+
+    <form method="get" action="{% url 'index' %}" id="analysis-form" novalidate>
+      {% if form.non_field_errors %}<div class="alert alert-error">{{ form.non_field_errors|join:" " }}</div>{% endif %}
+
+      <fieldset>
+        <legend>Univers d'actifs</legend>
+        {% include "optimizer/partials/field.html" with field=form.tickers %}
+      </fieldset>
+
+      <fieldset>
+        <legend>Paramètres</legend>
+        {% include "optimizer/partials/field.html" with field=form.start %}
+        {% include "optimizer/partials/field.html" with field=form.base_ccy %}
+        {% include "optimizer/partials/field.html" with field=form.benchmark %}
+        {% include "optimizer/partials/field.html" with field=form.seed %}
+      </fieldset>
+
+      <details class="advanced"{% if form.errors %} open{% endif %}>
+        <summary>Réglages avancés</summary>
+        <fieldset>
+          <legend>Monte Carlo</legend>
+          <div class="row-2">
+            {% include "optimizer/partials/field.html" with field=form.n_sim %}
+            {% include "optimizer/partials/field.html" with field=form.horizon %}
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend>Frontière efficiente</legend>
+          {% include "optimizer/partials/field.html" with field=form.n_portfolios %}
+        </fieldset>
+        <fieldset>
+          <legend>Backtest out-of-sample</legend>
+          {% include "optimizer/partials/field.html" with field=form.wf_window %}
+          {% include "optimizer/partials/field.html" with field=form.wf_rebal %}
+          {% include "optimizer/partials/field.html" with field=form.wf_cost %}
+        </fieldset>
+      </details>
+
+      <button type="submit" class="btn btn-primary btn-block">Lancer l'analyse</button>
+    </form>
+
+    <footer class="sidebar-footer">
+      Lohan Le Guidec — Master 1 MBFA<br>Ingénierie Économique et Financière — Université de Rennes
+    </footer>
+  </aside>
+
+  <!-- ── Contenu principal ───────────────────────────────────────────────── -->
+  <main class="main">
+    <div class="loading" id="loading" hidden>
+      <div class="spinner" aria-hidden="true"></div>
+      <p>Téléchargement des prix et optimisation en cours…</p>
+    </div>
+
+    {% if error %}
+      <div class="alert alert-error"><strong>Erreur lors de l'analyse.</strong> {{ error }}</div>
+    {% endif %}
+
+    {% if not run_key %}
+      <section class="empty">
+        <h2>Comparez quatre stratégies d'allocation sur vos actifs</h2>
+        <p>Equal Weight, Min Variance, Risk Parity et Max Sharpe, avec covariance Ledoit-Wolf, simulation Monte Carlo, Black-Litterman et backtest walk-forward hors échantillon.</p>
+        <p class="muted">Saisissez vos tickers Yahoo Finance à gauche, puis lancez l'analyse.</p>
+      </section>
+    {% else %}
+
+      <header class="results-header">
+        <div>
+          <h2>Résultats</h2>
+          <p class="meta">
+            {{ tickers|join:", " }}<br>
+            {{ period_start }} → {{ period_end }} · {{ n_days }} séances · Devise : {{ currency_label }} · Taux sans risque moyen : {{ rf }}{% if benchmark %} · Indice : {{ benchmark }}{% endif %}
+          </p>
+        </div>
+      </header>
+      {% if benchmark_error %}<div class="alert alert-warn">{{ benchmark_error }}. Les métriques relatives ne sont pas calculées.</div>{% endif %}
+
+      <div class="kpis">
+        {% for k in kpis %}
+        <div class="kpi" style="--accent: {{ k.color }}">
+          <h3>{{ k.name }}</h3>
+          <dl>
+            <div><dt>Rendement</dt><dd>{{ k.ret }}</dd></div>
+            <div><dt>Sharpe</dt><dd>{{ k.sharpe }}</dd></div>
+            <div><dt>Volatilité</dt><dd>{{ k.vol }}</dd></div>
+            <div><dt>Max DD</dt><dd>{{ k.mdd }}</dd></div>
+          </dl>
+        </div>
+        {% endfor %}
+      </div>
+      <p class="note">Chiffres in-sample annualisés : les poids sont optimisés sur toute la période. L'onglet « Backtest OOS » mesure la performance réellement atteignable.</p>
+
+      <nav class="tabs" role="tablist">
+        <button role="tab" data-tab="overview" aria-selected="true">Vue d'ensemble</button>
+        <button role="tab" data-tab="portfolios">Portefeuilles</button>
+        <button role="tab" data-tab="frontier">Frontière efficiente</button>
+        <button role="tab" data-tab="risk">Risque & drawdown</button>
+        <button role="tab" data-tab="montecarlo">Monte Carlo</button>
+        <button role="tab" data-tab="bl">Black-Litterman</button>
+        <button role="tab" data-tab="backtest">Backtest OOS</button>
+        <button role="tab" data-tab="data">Données</button>
+      </nav>
+
+      <!-- Vue d'ensemble -->
+      <section class="tab-panel" data-panel="overview">
+        <section class="card">
+          <h3>Métriques par actif</h3>
+          {% include "optimizer/partials/table.html" with table=tables.assets %}
+          <p class="note">Bêta calculé en devise locale contre l'indice du marché de cotation.</p>
+        </section>
+        <div class="grid-2">
+          <section class="card"><h3>Rendements annualisés</h3>{% include "optimizer/partials/chart.html" with json=charts.ann_returns %}</section>
+          <section class="card"><h3>Rendement vs volatilité</h3>{% include "optimizer/partials/chart.html" with json=charts.risk_return %}</section>
+        </div>
+        <section class="card"><h3>Matrice de corrélation</h3>{% include "optimizer/partials/chart.html" with json=charts.corr %}</section>
+      </section>
+
+      <!-- Portefeuilles -->
+      <section class="tab-panel" data-panel="portfolios" hidden>
+        <section class="card">
+          <h3>Performance des portefeuilles</h3>
+          {% include "optimizer/partials/table.html" with table=tables.perf %}
+          <p class="note">IC 95 % du Sharpe : erreur standard de Mertens (2002), corrigée de l'asymétrie et du kurtosis. PSR (Probabilistic Sharpe Ratio) : probabilité que le vrai Sharpe soit positif compte tenu de la longueur de l'historique.</p>
+        </section>
+        {% if tables.relative %}
+        <section class="card">
+          <h3>Performance relative à l'indice {{ benchmark }}</h3>
+          {% include "optimizer/partials/table.html" with table=tables.relative %}
+          <p class="note">Alpha de Jensen et bêta estimés par régression des rendements excédentaires sur ceux de l'indice. Tracking error = volatilité de l'écart de rendement ; information ratio = écart de rendement annualisé / tracking error. Chiffres in-sample : voir l'onglet Backtest OOS pour la version hors échantillon.</p>
+        </section>
+        {% endif %}
+        <div class="grid-3-2">
+          <section class="card"><h3>Valeur liquidative</h3>{% include "optimizer/partials/chart.html" with json=charts.equity %}</section>
+          <section class="card"><h3>Allocation</h3>{% include "optimizer/partials/chart_group.html" with group=groups.pies %}</section>
+        </div>
+        <section class="card">
+          <h3>Poids par stratégie</h3>
+          {% include "optimizer/partials/table.html" with table=tables.weights %}
+        </section>
+        <section class="card">
+          <h3>Contributions au risque</h3>
+          {% include "optimizer/partials/chart_group.html" with group=groups.risk_contrib %}
+        </section>
+      </section>
+
+      <!-- Frontière -->
+      <section class="tab-panel" data-panel="frontier" hidden>
+        <section class="card">
+          <h3>Frontière efficiente de Markowitz</h3>
+          {% include "optimizer/partials/chart.html" with json=charts.frontier %}
+          <p class="note">{{ params.n_portfolios }} portefeuilles long-only tirés uniformément ; couleur = ratio de Sharpe.</p>
+        </section>
+      </section>
+
+      <!-- Risque -->
+      <section class="tab-panel" data-panel="risk" hidden>
+        <section class="card"><h3>Drawdowns comparés</h3>{% include "optimizer/partials/chart.html" with json=charts.drawdowns %}</section>
+        <section class="card">
+          <h3>Métriques de risque</h3>
+          {% include "optimizer/partials/table.html" with table=tables.risk %}
+          <p class="note">VaR et CVaR historiques journalières ; Calmar = rendement annuel composé / |max drawdown|.</p>
+        </section>
+        {% if has_var_tests %}
+        <section class="card">
+          <h3>Backtest de la VaR historique</h3>
+          <p class="note">Chaque jour, la VaR est estimée sur les 250 séances précédentes uniquement, puis comparée au rendement réalisé. Test de Kupiec : le nombre d'exceptions est-il compatible avec le niveau de confiance ? Test de Christoffersen : les exceptions arrivent-elles en grappes ? Modèle rejeté si l'une des p-values est inférieure à 5 %.</p>
+          {% include "optimizer/partials/table.html" with table=tables.var %}
+        </section>
+        <section class="card">
+          <h3>VaR prévue et exceptions</h3>
+          {% include "optimizer/partials/chart_group.html" with group=groups.var_backtest %}
+        </section>
+        {% endif %}
+        <div class="grid-2">
+          <section class="card"><h3>Distribution des rendements journaliers</h3>{% include "optimizer/partials/chart_group.html" with group=groups.histograms %}</section>
+          <section class="card"><h3>Max drawdown par portefeuille</h3>{% include "optimizer/partials/chart.html" with json=charts.mdd_bar %}</section>
+        </div>
+      </section>
+
+      <!-- Monte Carlo -->
+      <section class="tab-panel" data-panel="montecarlo" hidden>
+        <section class="card">
+          <h3>Trajectoires simulées</h3>
+          <p class="note">{{ params.n_sim }} simulations · horizon {{ params.horizon }} jours · trajectoire moyenne et bande P10–P90 du portefeuille choisi ; les autres moyennes en pointillés.</p>
+          {% include "optimizer/partials/chart_group.html" with group=groups.mc_fan %}
+        </section>
+        <div class="grid-2">
+          <section class="card"><h3>Distribution des valeurs finales</h3>{% include "optimizer/partials/chart.html" with json=charts.mc_violin %}</section>
+          <section class="card"><h3>Synthèse</h3>{% include "optimizer/partials/table.html" with table=tables.mc %}</section>
+        </div>
+      </section>
+
+      <!-- Black-Litterman -->
+      <section class="tab-panel" data-panel="bl" hidden>
+        <section class="card">
+          <h3>Modèle Black-Litterman</h3>
+          <p class="note">Combine les rendements d'équilibre implicites d'un portefeuille de référence avec vos vues relatives entre actifs.</p>
+
+          <form id="bl-form" method="post" action="{% url 'black_litterman' %}">
+            {% csrf_token %}
+            <input type="hidden" name="run" value="{{ run_key }}">
+
+            <h4>1. Portefeuille de référence</h4>
+            <div class="radio-row">
+              {% for name in portfolio_names %}
+              <label class="chip"><input type="radio" name="ref" value="{{ name }}"{% if forloop.first %} checked{% endif %}> {{ name }}</label>
+              {% endfor %}
+              <label class="chip"><input type="radio" name="ref" value="custom"> Personnalisé</label>
+            </div>
+            <div class="custom-weights" id="custom-weights" hidden>
+              {% for t in tickers %}
+              <label>{{ t }}<input type="number" name="w_{{ forloop.counter0 }}" value="{{ equal_weight }}" min="0" step="0.5"> %</label>
+              {% endfor %}
+            </div>
+
+            <h4>2. Paramètres</h4>
+            <div class="row-2">
+              <label class="field">Tau (incertitude sur l'équilibre)
+                <select name="tau">
+                  <option value="0.01">0,01</option><option value="0.025">0,025</option>
+                  <option value="0.05" selected>0,05</option><option value="0.1">0,10</option><option value="0.25">0,25</option>
+                </select>
+              </label>
+              <label class="field">Confiance dans les vues : <output id="conf-out">0,50</output>
+                <input type="range" name="confidence" id="confidence" min="0.05" max="0.95" step="0.05" value="0.5">
+              </label>
+            </div>
+
+            <h4>3. Vues</h4>
+            <p class="note">« A surperforme B de X % par an ».</p>
+            <div id="views">
+              <div class="view-row">
+                <label>Actif A<select name="view_a">{% for t in tickers %}<option{% if forloop.first %} selected{% endif %}>{{ t }}</option>{% endfor %}</select></label>
+                <label>surperforme B<select name="view_b">{% for t in tickers %}<option{% if forloop.counter == 2 %} selected{% endif %}>{{ t }}</option>{% endfor %}</select></label>
+                <label>de (%/an)<input type="number" name="view_q" value="3" step="0.5"></label>
+                <button type="button" class="btn btn-ghost" data-remove-view aria-label="Supprimer la vue">✕</button>
+              </div>
+            </div>
+            <div class="actions">
+              <button type="button" class="btn btn-secondary" id="add-view">+ Ajouter une vue</button>
+              <button type="submit" class="btn btn-primary">Calculer Black-Litterman</button>
+            </div>
+          </form>
+        </section>
+        <div id="bl-result"></div>
+      </section>
+
+      <!-- Backtest -->
+      <section class="tab-panel" data-panel="backtest" hidden>
+        <p class="note">Fenêtre d'estimation {{ params.wf_window }} jours · rebalancement tous les {{ params.wf_rebal }} jours · coûts {{ params.wf_cost|floatformat:0 }} pb du turnover. Les poids sont ré-estimés uniquement avec les données passées et dérivent avec les prix entre deux rebalancements.</p>
+        {% for name, err in wf_errors.items %}<div class="alert alert-warn">Backtest {{ name }} en échec : {{ err }}</div>{% endfor %}
+        {% if charts.wf_equity %}
+          <div class="grid-3-2">
+            <section class="card"><h3>Valeur liquidative out-of-sample</h3>{% include "optimizer/partials/chart.html" with json=charts.wf_equity %}</section>
+            <section class="card">
+              <h3>Rendement total : in-sample vs out-of-sample</h3>
+              {% include "optimizer/partials/table.html" with table=tables.wf_comp %}
+              <p class="note">Mêmes dates pour les deux colonnes. L'in-sample utilise des poids optimisés en connaissant le futur : l'écart mesure ce biais.</p>
+            </section>
+          </div>
+          <section class="card"><h3>Métriques de risque out-of-sample</h3>{% include "optimizer/partials/table.html" with table=tables.wf_risk %}</section>
+          {% if tables.wf_relative %}
+          <section class="card">
+            <h3>Performance relative à l'indice {{ benchmark }} (out-of-sample)</h3>
+            {% include "optimizer/partials/table.html" with table=tables.wf_relative %}
+            <p class="note">C'est le tableau qui compte : un alpha et un information ratio mesurés hors échantillon, sur des poids qui n'ont jamais vu le futur.</p>
+          </section>
+          {% endif %}
+          <section class="card"><h3>Drawdowns out-of-sample</h3>{% include "optimizer/partials/chart.html" with json=charts.wf_drawdowns %}</section>
+        {% else %}
+          <div class="alert alert-warn">Historique insuffisant pour cette fenêtre d'estimation : réduisez-la ou choisissez une date de début plus ancienne.</div>
+        {% endif %}
+      </section>
+
+      <!-- Données -->
+      <section class="tab-panel" data-panel="data" hidden>
+        <div class="actions">
+          <a class="btn btn-secondary" href="{% url 'export_csv' run_key 'prices' %}">Télécharger les prix (CSV)</a>
+          <a class="btn btn-secondary" href="{% url 'export_csv' run_key 'returns' %}">Télécharger les rendements (CSV)</a>
+          <a class="btn btn-secondary" href="{% url 'export_csv' run_key 'weights' %}">Télécharger les poids (CSV)</a>
+        </div>
+        <section class="card"><h3>Prix ({{ currency_label }}) — 30 dernières séances</h3>{% include "optimizer/partials/table.html" with table=tables.prices %}</section>
+        <section class="card"><h3>Rendements journaliers — 30 dernières séances</h3>{% include "optimizer/partials/table.html" with table=tables.returns %}</section>
+        <section class="card"><h3>Matrice de covariance annualisée (Ledoit-Wolf)</h3>{% include "optimizer/partials/table.html" with table=tables.cov %}</section>
+      </section>
+
+    {% endif %}
+  </main>
+</div>
+{% endblock %}

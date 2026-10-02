@@ -1,0 +1,11 @@
+# Dépendances de l'application
+django>=5.0              # interface web (python manage.py runserver)
+python-dotenv>=1.0       # lecture du fichier .env (clé secrète, DEBUG…)
+plotly>=6.0
+pandas>=2.2
+numpy>=1.26
+scipy>=1.11
+scikit-learn>=1.4
+yfinance>=0.2.54
+pandas-datareader>=0.10
+setuptools               # pandas-datareader importe encore distutils (absent depuis Python 3.12)

@@ -1,0 +1,24 @@
+{% if error %}
+  <div class="alert alert-error">{{ error }}</div>
+{% endif %}
+{% for w in warnings %}<div class="alert alert-warn">{{ w }}</div>{% endfor %}
+{% if table %}
+<div class="stats-row">
+  {% for label, value in stats %}<div class="stat"><span>{{ label }}</span><strong>{{ value }}</strong></div>{% endfor %}
+</div>
+<div class="grid-2">
+  <section class="card">
+    <h3>Poids : référence vs Black-Litterman</h3>
+    {% include "optimizer/partials/chart.html" with json=chart_weights %}
+  </section>
+  <section class="card">
+    <h3>Rendements a posteriori (annuels)</h3>
+    {% include "optimizer/partials/chart.html" with json=chart_mu %}
+  </section>
+</div>
+<section class="card">
+  <h3>Détail par actif</h3>
+  {% include "optimizer/partials/table.html" with table=table %}
+  <p class="note">Les rendements « historiques » des statistiques ci-dessus utilisent les moyennes passées ; le rendement a posteriori est l'estimation Black-Litterman qui a servi à l'optimisation.</p>
+</section>
+{% endif %}

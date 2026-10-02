@@ -1,0 +1,14 @@
+{% load static %}<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Portfolio Optimizer{% endblock %}</title>
+  <link rel="stylesheet" href="{% static 'optimizer/style.css' %}">
+  <script src="{% url 'plotly_js' %}" defer></script>
+  <script src="{% static 'optimizer/app.js' %}" defer></script>
+</head>
+<body>
+  {% block body %}{% endblock %}
+</body>
+</html>

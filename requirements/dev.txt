@@ -1,0 +1,6 @@
+-r base.txt
+
+# Dépendances de développement (tests, qualité de code)
+pytest>=8.0
+pytest-django>=4.8
+ruff>=0.6
