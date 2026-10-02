@@ -4,6 +4,10 @@ Application web (Django) d'allocation de portefeuille multi-stratégies : Markow
 
 *Lohan Le Guidec — Master 1 MBFA, Ingénierie Économique et Financière, Université de Rennes*
 
+## Démonstration
+
+https://github.com/user-attachments/assets/19f77039-a2ae-4b77-a3b6-1e993cb51713
+
 ## Fonctionnalités
 
 | Onglet | Contenu |
