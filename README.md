@@ -2,7 +2,7 @@
 
 Application web (Django) d'allocation de portefeuille multi-stratégies : Markowitz, risk parity, max Sharpe, Black-Litterman, simulation Monte Carlo et backtest walk-forward hors échantillon.
 
-*Lohan Le Guidec — Master 1 MBFA, Ingénierie Économique et Financière, Université de Rennes*
+*Lohan Le Guidec — Master 2 MBFA, Ingénierie Économique et Financière, Université de Rennes*
 
 ## Démonstration
 
